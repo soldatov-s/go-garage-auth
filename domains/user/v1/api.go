@@ -35,7 +35,7 @@ func (u *UserV1) userPostHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
 	var userCreds models.NewCredentials
 
@@ -48,7 +48,7 @@ func (u *UserV1) userPostHandler(ec echo.Context) (err error) {
 		if err != nil {
 			log.Err(err).Msg("BAD REQUEST")
 
-			return echo.BadRequest(ec, err)
+			return ec.BadRequest(err)
 		}
 	}
 
@@ -56,13 +56,13 @@ func (u *UserV1) userPostHandler(ec echo.Context) (err error) {
 	if err != nil {
 		log.Err(err).Msg("BAD REQUEST")
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	if !userCreds.Validate() {
 		log.Err(err).Msg("BAD REQUEST")
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	userData, err := u.createUser(&userCreds)
@@ -77,10 +77,10 @@ func (u *UserV1) userPostHandler(ec echo.Context) (err error) {
 		}
 
 		log.Err(err).Msgf("CREATE USER FAILED %s", &userCreds)
-		return echo.CreateFailed(ec, err)
+		return ec.CreateFailed(err)
 	}
 
-	return echo.OK(ec, UserDataResult{Body: userData})
+	return ec.OK(UserDataResult{Body: userData})
 }
 
 func (u *UserV1) userGetHandler(ec echo.Context) (err error) {
@@ -100,23 +100,23 @@ func (u *UserV1) userGetHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
 	userID, err := strconv.ParseInt(ec.Param("id"), 10, 64)
 	if err != nil {
 		log.Err(err).Msgf("BAD REQUEST, id %s", ec.Param("id"))
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	userData, err := u.GetUserDataByID(userID)
 	if err != nil {
 		log.Err(err).Msgf("NOT FOUND, id %d", userID)
 
-		return echo.NotFound(ec, err)
+		return ec.NotFound(err)
 	}
 
-	return echo.OK(ec, UserDataResult{Body: userData})
+	return ec.OK(UserDataResult{Body: userData})
 }
 
 func (u *UserV1) userPutHandler(ec echo.Context) (err error) {
@@ -139,13 +139,13 @@ func (u *UserV1) userPutHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
-	userID, err := strconv.ParseInt(ec.Param("id"), 10, 64)
+	userID, err := ec.GetInt64Param("id")
 	if err != nil {
 		log.Err(err).Msgf("BAD REQUEST, id %s", ec.Param("id"))
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	var bodyBytes []byte
@@ -156,7 +156,7 @@ func (u *UserV1) userPutHandler(ec echo.Context) (err error) {
 
 		if err != nil {
 			log.Err(err).Msgf("USER DATA NOT UPDATED, id %d", userID)
-			return echo.BadRequest(ec, err)
+			return ec.BadRequest(err)
 		}
 	}
 
@@ -173,10 +173,10 @@ func (u *UserV1) userPutHandler(ec echo.Context) (err error) {
 
 		log.Err(err).Msgf("BAD REQUEST, id %d, body %s", userID, string(bodyBytes))
 
-		return echo.NotUpdated(ec, err)
+		return ec.NotUpdated(err)
 	}
 
-	return echo.OK(ec, UserDataResult{Body: userData})
+	return ec.OK(UserDataResult{Body: userData})
 }
 
 func (u *UserV1) credsPutHandler(ec echo.Context) (err error) {
@@ -198,13 +198,13 @@ func (u *UserV1) credsPutHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
-	userID, err := strconv.ParseInt(ec.Param("id"), 10, 64)
+	userID, err := ec.GetInt64Param("id")
 	if err != nil {
 		log.Err(err).Msgf("BAD REQUEST, id %s", ec.Param("id"))
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	var userCreds models.UpdateCredentials
@@ -213,13 +213,13 @@ func (u *UserV1) credsPutHandler(ec echo.Context) (err error) {
 	if err != nil {
 		log.Err(err).Msgf("BAD REQUEST, id %d", userID)
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	if !userCreds.Validate() {
 		log.Err(err).Msgf("BAD REQUEST, id %d, userCreds %s", userID, &userCreds)
 
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	userData, err := u.updateUserCredsByID(userID, &userCreds)
@@ -235,10 +235,10 @@ func (u *UserV1) credsPutHandler(ec echo.Context) (err error) {
 
 		log.Err(err).Msgf("DATA NOT UPDATED, id %d, userCreds %s", userID, &userCreds)
 
-		return echo.NotUpdated(ec, err)
+		return ec.NotUpdated(err)
 	}
 
-	return echo.OK(ec, UserDataResult{Body: userData})
+	return ec.OK(UserDataResult{Body: userData})
 }
 
 func (u *UserV1) credsPostHandler(ec echo.Context) (err error) {
@@ -258,44 +258,42 @@ func (u *UserV1) credsPostHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
 	var userCreds models.Credentials
 
 	err = ec.Bind(&userCreds)
 	if err != nil {
 		log.Err(err).Msg("BAD REQUEST")
-
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	if !userCreds.Validate() {
 		log.Err(err).Msgf("BAD REQUEST, userCreds %s", &userCreds)
-
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	userData, err := u.GetUserDataByCreds(&userCreds)
 	if err != nil {
 		log.Err(err).Msgf("UNAUTHORIZED, userCreds %s", &userCreds)
-		return echo.Unauthorized(ec, err)
+		return ec.Unauthorized(err)
 	}
 
 	authV1, err := authv1.Get(u.ctx)
 	if err != nil {
 		log.Err(err).Msg("failed to get authv1 domain")
-		return echo.InternalServerError(ec, err)
+		return ec.InternalServerError(err)
 	}
 
 	if !userCreds.Validate() {
 		log.Err(err).Msgf("failed to create token, userCreds %s", &userCreds)
-		return echo.InternalServerError(ec, err)
+		return ec.InternalServerError(err)
 	}
 
 	token, err := authV1.CreateToken(int(userData.ID))
 	if err != nil {
 		log.Err(err).Msgf("CREATE SESSION FAILED %+v", &userCreds)
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	cookie := new(http.Cookie)
@@ -303,7 +301,7 @@ func (u *UserV1) credsPostHandler(ec echo.Context) (err error) {
 	cookie.Value = token
 	cookie.Expires = time.Now().Add(u.cfg.Token.HMAC.TTL)
 
-	return echo.OK(ec, TokenAndUserResult{Body: models.TokenAndUser{Token: token, User: userData}})
+	return ec.OK(TokenAndUserResult{Body: models.TokenAndUser{Token: token, User: userData}})
 }
 
 func (u *UserV1) userDeleteHandler(ec echo.Context) (err error) {
@@ -324,13 +322,12 @@ func (u *UserV1) userDeleteHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
-	userID, err := strconv.ParseInt(ec.Param("id"), 10, 64)
+	userID, err := ec.GetInt64Param("id")
 	if err != nil {
 		log.Err(err).Msgf("BAD REQUEST, id %s", ec.Param("id"))
-
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	hard := ec.QueryParam("hard")
@@ -342,14 +339,10 @@ func (u *UserV1) userDeleteHandler(ec echo.Context) (err error) {
 
 	if err != nil {
 		log.Err(err).Msgf("DATA NOT DELETED, id %d", userID)
-
-		return echo.NotDeleted(ec, err)
+		return ec.NotDeleted(err)
 	}
 
-	return ec.JSON(
-		http.StatusOK,
-		httpsrv.OkResult(),
-	)
+	return ec.OkResult()
 }
 
 func (u *UserV1) userSearchPostHandler(ec echo.Context) (err error) {
@@ -369,25 +362,20 @@ func (u *UserV1) userSearchPostHandler(ec echo.Context) (err error) {
 	}
 
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 	var req ArrayOfMapInterface
 
 	err = ec.Bind(&req)
 	if err != nil {
 		log.Err(err).Msg("BAD REQUEST")
-
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	foundUsersData, err := u.getUserDataByUserData(&req)
 	if err != nil {
 		log.Err(err).Msgf("NOT FOUND DATA, request %+v", req)
-
-		return echo.NotFound(ec, err)
+		return ec.NotFound(err)
 	}
 
-	return ec.JSON(
-		http.StatusOK,
-		UserDataResult{Body: foundUsersData},
-	)
+	return ec.OK(UserDataResult{Body: foundUsersData})
 }

@@ -46,28 +46,28 @@ func (a *AuthV1) revokePostHandler(ec echo.Context) (err error) {
 		return nil
 	}
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
 	token, err := a.getTokenFromRequest(ec)
 	if err != nil {
 		log.Err(err).Msg("getting token from request failed")
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	strategy, err := hmac.Get(a.ctx)
 	if err != nil {
 		log.Err(err).Msgf("get token failed %s", token)
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	err = a.DeleteToken(strategy.Signature(token))
 	if err != nil {
 		log.Err(err).Msgf("revoking token failed %s", token)
 
-		return echo.NotDeleted(ec, err)
+		return ec.NotDeleted(err)
 	}
 
-	return echo.OkResult(ec)
+	return ec.OkResult()
 }
 
 func (a *AuthV1) introspectGetHandler(ec echo.Context) (err error) {
@@ -86,30 +86,30 @@ func (a *AuthV1) introspectGetHandler(ec echo.Context) (err error) {
 		return nil
 	}
 	// Main code of handler
-	log := echo.GetLog(ec)
+	log := ec.GetLog()
 
 	token, err := a.getTokenFromRequest(ec)
 	if err != nil {
 		log.Err(err).Msg("getting session from request failed")
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	strategy, err := hmac.Get(a.ctx)
 	if err != nil {
 		log.Err(err).Msgf("get token failed %s", token)
-		return echo.BadRequest(ec, err)
+		return ec.BadRequest(err)
 	}
 
 	err = strategy.Validate(token)
 	if err != nil {
 		log.Err(err).Msgf("token %s isn't valid", token)
-		return echo.OK(ec, TokenDataResult{Body: &models.TokenIntrospection{}})
+		return ec.OK(TokenDataResult{Body: &models.TokenIntrospection{}})
 	}
 
 	session, err := a.GetToken(strategy.Signature(token))
 	if err != nil || session.ExpiredAt.Time.Before(time.Now().UTC()) {
 		log.Err(err).Msgf("get token failed %s", token)
-		return echo.OK(ec, TokenDataResult{Body: &models.TokenIntrospection{}})
+		return ec.OK(TokenDataResult{Body: &models.TokenIntrospection{}})
 	}
 
 	log.Debug().Msgf("find session for subject %s", session.Subject)
@@ -120,5 +120,5 @@ func (a *AuthV1) introspectGetHandler(ec echo.Context) (err error) {
 		Meta:      session.Meta.Map,
 		ExpiredAt: session.ExpiredAt.Time.Unix(),
 	}
-	return echo.OK(ec, TokenDataResult{Body: intropsectResullt})
+	return ec.OK(TokenDataResult{Body: intropsectResullt})
 }
