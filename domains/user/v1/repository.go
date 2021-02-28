@@ -226,37 +226,33 @@ func (u *UserV1) getUserDataByUserData(req *ArrayOfMapInterface) (data *ArrayOfU
 				return nil, ErrKeyDoNotMatch
 			}
 
-			if key == "user_email" {
-				// Normalize email
-				var (
-					value string
-					ok    bool
-				)
+			var (
+				value string
+				ok    bool
+			)
+
+			switch key {
+			case "user_email":
 				if value, ok = field.(string); !ok {
 					return nil, ErrFailedTypeCast
 				}
-				normolizedEmail, err1 := email.Normilize(value)
-				if err1 != nil {
-					return nil, err1
+				value, err = email.Normilize(value)
+				if err != nil {
+					return nil, err
 				}
 
-				queryMap[key+strconv.Itoa(i)] = normolizedEmail
-			} else if key == "user_phone" {
-				// Normalize phone
-				var (
-					value string
-					ok    bool
-				)
+				queryMap[key+strconv.Itoa(i)] = value
+			case "user_phone":
 				if value, ok = field.(string); !ok {
 					return nil, ErrFailedTypeCast
 				}
-				normolizedPhone, err1 := phone.Normilize(value)
-				if err1 != nil {
-					return nil, err1
+				value, err = phone.Normilize(value)
+				if err != nil {
+					return nil, err
 				}
 
-				queryMap[key+strconv.Itoa(i)] = normolizedPhone
-			} else {
+				queryMap[key+strconv.Itoa(i)] = value
+			default:
 				queryMap[key+strconv.Itoa(i)] = field
 			}
 
