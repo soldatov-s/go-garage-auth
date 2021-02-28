@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"context"
+	"time"
 
 	"github.com/soldatov-s/go-garage-auth/internal/hmac"
 	"github.com/soldatov-s/go-garage/providers/config"
@@ -26,7 +27,10 @@ type Config struct {
 	PublicHTTP  *echo.Config
 	PrivateHTTP *echo.Config
 	Stats       *garage.Config
-	Token       *hmac.Config
+	Token       struct {
+		HMAC                 *hmac.Config
+		ClearOldTokensPeriod time.Duration `envconfig:"default=48h"`
+	}
 }
 
 func Get(ctx context.Context) *Config {

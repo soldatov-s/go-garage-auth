@@ -25,7 +25,7 @@ func (a *AuthV1) CreateToken(id int) (string, error) {
 
 	request.Signature = sign
 	request.Subject = strconv.Itoa(id)
-	request.ExpiredAt.SetTime(time.Now().Add(a.cfg.Token.TTL))
+	request.ExpiredAt.SetTime(time.Now().Add(a.cfg.Token.HMAC.TTL))
 
 	if a.db.Conn == nil {
 		return "", db.ErrDBConnNotEstablished
@@ -68,4 +68,38 @@ func (a *AuthV1) DeleteToken(id string) (err error) {
 	}
 
 	return nil
+}
+
+func (a *AuthV1) ClearOldTokens() {
+	for {
+		time.Sleep(a.cfg.Token.ClearOldTokensPeriod)
+
+		if a.db.Conn == nil {
+			continue
+		}
+
+		if a.mutex.IsLocked() {
+			continue
+		}
+
+		go func() {
+			err := a.mutex.Lock()
+			if err != nil {
+				a.log.Err(err).Msg("failed to lock mutex")
+			}
+			defer func() {
+				err1 := a.mutex.Unlock()
+				if err1 != nil {
+					a.log.Err(err1).Msg("failed to unlock mutex")
+				}
+			}()
+
+			_, err = a.db.Conn.Exec(a.db.Conn.Rebind("DELETE FROM production.token WHERE expired_at<=$1"),
+				time.Now().Add(-a.cfg.Token.ClearOldTokensPeriod))
+
+			if err != nil {
+				a.log.Err(err).Msg("failed to clear old tokens")
+			}
+		}()
+	}
 }

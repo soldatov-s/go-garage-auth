@@ -301,7 +301,7 @@ func (u *UserV1) credsPostHandler(ec echo.Context) (err error) {
 	cookie := new(http.Cookie)
 	cookie.Name = authv1.SessionCookie
 	cookie.Value = token
-	cookie.Expires = time.Now().Add(u.cfg.Token.TTL)
+	cookie.Expires = time.Now().Add(u.cfg.Token.HMAC.TTL)
 
 	return echo.OK(ec, TokenAndUserResult{Body: models.TokenAndUser{Token: token, User: userData}})
 }

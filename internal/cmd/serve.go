@@ -154,7 +154,7 @@ func initDomains(ctx context.Context) context.Context {
 		log.Fatal().Err(err).Msg("failed to create domain authv1")
 	}
 
-	if ctx, err = hmac.Registrate(ctx, cfg.Get(ctx).Token); err != nil {
+	if ctx, err = hmac.Registrate(ctx, cfg.Get(ctx).Token.HMAC); err != nil {
 		log.Fatal().Err(err).Msg("failed to create domain hmac")
 	}
 

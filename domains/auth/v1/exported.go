@@ -18,10 +18,11 @@ const (
 type empty struct{}
 
 type AuthV1 struct {
-	log zerolog.Logger
-	ctx context.Context
-	db  *pq.Enity
-	cfg *cfg.Config
+	log   zerolog.Logger
+	ctx   context.Context
+	db    *pq.Enity
+	cfg   *cfg.Config
+	mutex *pq.Mutex
 }
 
 func Registrate(ctx context.Context) (context.Context, error) {
@@ -34,6 +35,12 @@ func Registrate(ctx context.Context) (context.Context, error) {
 	if a.db, err = pq.GetEnityTypeCast(ctx, cfg.DBName); err != nil {
 		return nil, err
 	}
+
+	if a.mutex, err = pq.NewMutex(a.db.Conn, 0); err != nil {
+		return nil, err
+	}
+
+	go a.ClearOldTokens()
 
 	privateV1, err := echo.GetAPIVersionGroup(ctx, cfg.PrivateHTTP, cfg.V1)
 	if err != nil {
