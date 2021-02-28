@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/prometheus/client_golang/prometheus"
 	authv1 "github.com/soldatov-s/go-garage-auth/domains/auth/v1"
 	userv1 "github.com/soldatov-s/go-garage-auth/domains/user/v1"
 	"github.com/soldatov-s/go-garage-auth/internal/cfg"
@@ -16,45 +15,11 @@ import (
 	"github.com/soldatov-s/go-garage/providers/db/pq"
 	"github.com/soldatov-s/go-garage/providers/httpsrv/echo"
 	"github.com/soldatov-s/go-garage/providers/logger"
-	"github.com/soldatov-s/go-garage/providers/stats"
 	"github.com/soldatov-s/go-garage/providers/stats/garage"
 	"github.com/spf13/cobra"
 )
 
 type empty struct{}
-
-func addMetrics(ctx context.Context) error {
-	s, err := garage.GetEnityTypeCast(ctx, cfg.StatsName)
-	if err != nil {
-		return err
-	}
-
-	if err := s.RegisterReadyCheck("TEST",
-		func() (bool, string) {
-			return true, "test error"
-		}); err != nil {
-		return err
-	}
-
-	metricOptions := &stats.MetricOptions{
-		Metric: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: "test_alive",
-				Help: "test server link",
-			}),
-		MetricFunc: func(m interface{}) {
-			(m.(prometheus.Gauge)).Set(1)
-		},
-	}
-
-	if err := s.RegisterMetric(
-		"test",
-		metricOptions); err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func initService() context.Context {
 	// Create context
@@ -132,10 +97,6 @@ func initProviders(ctx context.Context) context.Context {
 
 	if ctx, err = garage.RegistrateEnity(ctx, cfg.StatsName, c.Stats); err != nil {
 		log.Fatal().Err(err).Msg("failed to registrate stats")
-	}
-
-	if err = addMetrics(ctx); err != nil {
-		log.Fatal().Err(err).Msg("failed to registrate metrics")
 	}
 
 	return ctx

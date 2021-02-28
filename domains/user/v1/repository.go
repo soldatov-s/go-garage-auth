@@ -10,13 +10,13 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/jmoiron/sqlx"
 	"github.com/soldatov-s/go-garage-auth/models"
-	"github.com/soldatov-s/go-garage/crypto"
+	"github.com/soldatov-s/go-garage/crypto/sha256"
 	"github.com/soldatov-s/go-garage/providers/db"
 	"github.com/soldatov-s/go-garage/types"
 	"github.com/soldatov-s/go-garage/utils"
 	"github.com/soldatov-s/go-garage/utils/email"
 	"github.com/soldatov-s/go-garage/utils/phone"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/soldatov-s/go-garage/x/sql"
 )
 
 type Partitions struct {
@@ -106,7 +106,7 @@ func (u *UserV1) createUser(c *models.NewCredentials) (data *models.User, err er
 		return
 	}
 
-	passwordHash, err := crypto.HashAndSalt(c.Password)
+	passwordHash, err := sha256.HashAndSalt(c.Password)
 	if err != nil {
 		return
 	}
@@ -126,8 +126,6 @@ func (u *UserV1) createUser(c *models.NewCredentials) (data *models.User, err er
 		return nil, db.ErrDBConnNotEstablished
 	}
 
-	fmt.Println(utils.JoinStrings(" ", "INSERT INTO production.user", "("+strings.Join(data.SQLParamsRequest(), ", ")+")",
-		"VALUES", "("+":"+strings.Join(data.SQLParamsRequest(), ", :")+") returning *"))
 	if u.createUserStmt == nil {
 		u.createUserStmt, err = u.db.Conn.PrepareNamed(
 			u.db.Conn.Rebind(utils.JoinStrings(" ", "INSERT INTO production.user", "("+strings.Join(data.SQLParamsRequest(), ", ")+")",
@@ -153,19 +151,14 @@ func (u *UserV1) createUser(c *models.NewCredentials) (data *models.User, err er
 	return data, nil
 }
 
-func (u *UserV1) GetUserDataByID(id int64) (data *models.User, err error) {
-	data = &models.User{}
+func (u *UserV1) GetUserDataByID(id int64) (*models.User, error) {
+	data := &models.User{}
 
-	if u.db.Conn == nil {
-		return nil, db.ErrDBConnNotEstablished
-	}
-
-	err = u.db.Conn.Get(data, "select * from production.user where user_id=$1", id)
-	if err != nil {
+	if err := sql.SelectByID(u.db.Conn, "production.user", id, &data); err != nil {
 		return nil, err
 	}
 
-	return
+	return data, nil
 }
 
 func (u *UserV1) GetUserDataByCreds(c *models.Credentials) (data *models.User, err error) {
@@ -179,7 +172,12 @@ func (u *UserV1) GetUserDataByCreds(c *models.Credentials) (data *models.User, e
 	if c.Login != "" {
 		err = u.db.Conn.Get(data, "select * from production.loginFastSearch($1)", c.Login)
 	} else if c.Phone != "" {
-		err = u.db.Conn.Get(data, "select * from production.phonelFastSearch($1)", c.Phone)
+		normolizedPhone, err1 := phone.Normilize(c.Phone)
+		if err1 != nil {
+			return nil, err1
+		}
+
+		err = u.db.Conn.Get(data, "select * from production.phonelFastSearch($1)", normolizedPhone)
 	} else if c.Email != "" {
 		// Normalize email
 		normolizedEmail, err1 := email.Normilize(c.Email)
@@ -195,7 +193,7 @@ func (u *UserV1) GetUserDataByCreds(c *models.Credentials) (data *models.User, e
 	}
 
 	// Check password
-	err = crypto.ComparePasswords(data.Hash, c.Password)
+	err = sha256.ComparePasswords(data.Hash, c.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +241,21 @@ func (u *UserV1) getUserDataByUserData(req *ArrayOfMapInterface) (data *ArrayOfU
 				}
 
 				queryMap[key+strconv.Itoa(i)] = normolizedEmail
+			} else if key == "user_phone" {
+				// Normalize phone
+				var (
+					value string
+					ok    bool
+				)
+				if value, ok = field.(string); !ok {
+					return nil, ErrFailedTypeCast
+				}
+				normolizedPhone, err1 := phone.Normilize(value)
+				if err1 != nil {
+					return nil, err1
+				}
+
+				queryMap[key+strconv.Itoa(i)] = normolizedPhone
 			} else {
 				queryMap[key+strconv.Itoa(i)] = field
 			}
@@ -319,11 +332,18 @@ func (u *UserV1) mergeUserData(oldData *models.User, patch *[]byte) (newData *mo
 	}
 
 	// Normalize email
-	email, err := email.Normilize(newData.Email)
+	normalEmail, err := email.Normilize(newData.Email)
 	if err != nil {
 		return
 	}
-	newData.Email = email
+	newData.Email = normalEmail
+
+	// Normalize phone
+	normalPhone, err := phone.Normilize(newData.Phone)
+	if err != nil {
+		return
+	}
+	newData.Phone = normalPhone
 
 	// Protect ID from changes
 	newData.ID = id
@@ -341,8 +361,7 @@ func (u *UserV1) mergeUserData(oldData *models.User, patch *[]byte) (newData *mo
 		return nil, err
 	}
 
-	newData.UpdatedAt.Time = time.Now()
-	newData.UpdatedAt.Valid = true
+	newData.UpdatedAt.SetNow()
 
 	return newData, nil
 }
@@ -360,9 +379,10 @@ func (u *UserV1) updateUserByID(id int64, patch *[]byte) (writeData *models.User
 		return
 	}
 
-	// Save old login/email
+	// Save old login/email/phone
 	oldLogin := data.Login
 	oldMail := data.Email
+	oldPhone := data.Phone
 
 	writeData, err = u.mergeUserData(data, patch)
 	if err != nil {
@@ -377,15 +397,20 @@ func (u *UserV1) updateUserByID(id int64, patch *[]byte) (writeData *models.User
 	writeUpdateData := &updateUserData{}
 	writeUpdateData.User = *writeData
 
-	// Check that new mail/login not equal old mail/login
+	// Check that new mail/login/phone not equal old mail/login
 	writeUpdateData.NewLogin = ""
 	writeUpdateData.NewMail = ""
+	writeUpdateData.NewPhone = ""
 	if oldLogin != writeData.Login {
 		writeUpdateData.NewLogin = writeData.Login
 	}
 
 	if oldMail != writeData.Email {
 		writeUpdateData.NewMail = writeData.Email
+	}
+
+	if oldPhone != writeData.Phone {
+		writeUpdateData.NewPhone = writeData.Phone
 	}
 
 	if u.db.Conn == nil {
@@ -419,13 +444,10 @@ func (u *UserV1) softDeleteUserByID(id int64) (err error) {
 	}
 
 	if data.DeletedAt.Valid {
-		return
+		return nil
 	}
 
-	data.DeletedAt.Time = time.Now()
-	data.DeletedAt.Valid = true
-	data.UpdatedAt.Time = time.Now()
-	data.UpdatedAt.Valid = true
+	data.DeletedAt.Timestamp()
 
 	query := make([]string, 0, len(data.SQLParamsRequest()))
 	for _, param := range data.SQLParamsRequest() {
@@ -444,17 +466,7 @@ func (u *UserV1) softDeleteUserByID(id int64) (err error) {
 }
 
 func (u *UserV1) hardDeleteUserByID(id int64) (err error) {
-	if u.db.Conn == nil {
-		return db.ErrDBConnNotEstablished
-	}
-
-	_, err = u.db.Conn.Exec(u.db.Conn.Rebind("DELETE FROM production.user WHERE user_id=$1"), id)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return sql.HardDeleteByID(u.db.Conn, "production.user", id)
 }
 
 func (u *UserV1) updateUserCredsByID(id int64, c *models.UpdateCredentials) (data *models.User, err error) {
@@ -465,7 +477,7 @@ func (u *UserV1) updateUserCredsByID(id int64, c *models.UpdateCredentials) (dat
 
 	// Check password
 	if c.OldPassword != "" {
-		err = crypto.ComparePasswords(data.Hash, c.OldPassword)
+		err = sha256.ComparePasswords(data.Hash, c.OldPassword)
 		if err != nil {
 			return nil, err
 		}
@@ -474,24 +486,23 @@ func (u *UserV1) updateUserCredsByID(id int64, c *models.UpdateCredentials) (dat
 	// Update password
 	if c.Password != "" {
 		// Checking that new password is not same as old password
-		err = crypto.ComparePasswords(data.Hash, c.Password)
-		if err != bcrypt.ErrMismatchedHashAndPassword {
+		err = sha256.ComparePasswords(data.Hash, c.Password)
+		if err != sha256.ErrMismatchedHashAndPassword {
 			if err == nil {
 				return nil, ErrNewPasswordIsSameAsOld
 			}
 			return nil, err
 		}
 
-		passwordHash, err1 := crypto.HashAndSalt(c.Password)
+		passwordHash, err1 := sha256.HashAndSalt(c.Password)
 		if err1 != nil {
 			return nil, err1
 		}
 
-		data.Hash = string(passwordHash)
+		data.Hash = passwordHash
 	}
 
-	data.UpdatedAt.Time = time.Now()
-	data.UpdatedAt.Valid = true
+	data.UpdatedAt.Timestamp()
 
 	// We can not to use updateUserByID, because the json Data not include all hash-fields
 	query := make([]string, 0, len(data.SQLParamsRequest()))

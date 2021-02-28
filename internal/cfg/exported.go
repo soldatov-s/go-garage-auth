@@ -14,7 +14,7 @@ import (
 
 const (
 	DBName    = "auth"
-	StatsName = "statsTest"
+	StatsName = "statsAuth"
 
 	PublicHTTP  = "public"
 	PrivateHTTP = "private"
